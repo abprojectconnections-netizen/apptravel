@@ -375,6 +375,15 @@ func (s *Server) adminListReports(w http.ResponseWriter, r *http.Request, a acto
 }
 
 func (s *Server) adminDismissReports(w http.ResponseWriter, r *http.Request, a actor) {
+	s.dismissReports(w, r, a, "admin.report.dismiss")
+}
+
+func (s *Server) adminRemoveReportedPost(w http.ResponseWriter, r *http.Request, a actor) {
+	s.removeReportedPost(w, r, a, "admin.post.remove")
+}
+
+// dismissReports / removeReportedPost are shared by the admin and moderator portals; only the audit action differs.
+func (s *Server) dismissReports(w http.ResponseWriter, r *http.Request, a actor, action string) {
 	id, ok := pathID(r, "postId")
 	if !ok {
 		httpx.NotFound(w, r)
@@ -386,7 +395,7 @@ func (s *Server) adminDismissReports(w http.ResponseWriter, r *http.Request, a a
 		if n, e = tx.DismissPostReports(id); e != nil {
 			return e
 		}
-		return s.audit(tx, a, "admin.report.dismiss", "post", id, map[string]any{"reports": n})
+		return s.audit(tx, a, action, "post", id, map[string]any{"reports": n})
 	})
 	if s.fail(w, r, err) {
 		return
@@ -394,7 +403,7 @@ func (s *Server) adminDismissReports(w http.ResponseWriter, r *http.Request, a a
 	httpx.WriteJSON(w, 200, map[string]any{"postId": id, "dismissed": n})
 }
 
-func (s *Server) adminRemoveReportedPost(w http.ResponseWriter, r *http.Request, a actor) {
+func (s *Server) removeReportedPost(w http.ResponseWriter, r *http.Request, a actor, action string) {
 	id, ok := pathID(r, "postId")
 	if !ok {
 		httpx.NotFound(w, r)
@@ -404,7 +413,7 @@ func (s *Server) adminRemoveReportedPost(w http.ResponseWriter, r *http.Request,
 		if err := tx.AdminDeletePost(id); err != nil {
 			return err
 		}
-		return s.audit(tx, a, "admin.post.remove", "post", id, nil)
+		return s.audit(tx, a, action, "post", id, nil)
 	})
 	if s.fail(w, r, err) {
 		return

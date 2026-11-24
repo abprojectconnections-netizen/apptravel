@@ -247,3 +247,58 @@ func TestAdminDestinations(t *testing.T) {
 	}
 	e.requireAudit(ad, "admin.destination.create", "admin.destination.update", "admin.destination.delete")
 }
+
+func TestModeratorPortal(t *testing.T) {
+	e := newEnv(t, nil)
+	ad, tr := e.loginAs("admin@tep.dev"), e.login()
+	mod := e.makeModerator(ad, "mod@example.com")
+	if _, me, _ := e.do("GET", "/v1/me", mod, nil); me["role"] != "moderator" {
+		t.Fatalf("role = %v", me["role"])
+	}
+	// a moderator is not an admin
+	for _, p := range []string{"/admin/v1/users", "/admin/v1/reports", "/admin/v1/settings", "/staff/v1/dashboard", "/partner/v1/dashboard"} {
+		if code, _, _ := e.do("GET", p, mod, nil); code != 403 {
+			t.Errorf("moderator GET %s = %d, want 403", p, code)
+		}
+	}
+	// reported posts
+	other := e.loginAs("staff@tep.dev")
+	mk := func(text string) string {
+		code, p, _ := e.do("POST", "/v1/community/posts", tr, map[string]any{"type": "tip", "text": text})
+		if code != 201 {
+			t.Fatalf("post = %d %v", code, p)
+		}
+		return fmt.Sprint(int(p["id"].(float64)))
+	}
+	bad, ok := mk("โฆษณาขายของ ติดต่อไลน์ด่วนที่นี่เลย"), mk("โพสต์ที่โดนรายงานโดยไม่ได้ตั้งใจ")
+	for _, c := range []struct{ tok, post string }{{other, bad}, {ad, bad}, {other, ok}} {
+		if code, _, _ := e.do("POST", "/v1/community/posts/"+c.post+"/report", c.tok, map[string]any{"reason": "spam"}); code != 204 {
+			t.Fatalf("report = %d", code)
+		}
+	}
+	_, d, _ := e.do("GET", "/moderator/v1/dashboard", mod, nil)
+	if d["reportedPosts"].(float64) < 2 || d["openReports"].(float64) < 3 || d["mostReported"] == nil {
+		t.Errorf("dashboard = %v", d)
+	}
+	code, q, _ := e.do("GET", "/moderator/v1/reports", mod, nil)
+	if code != 200 || fmt.Sprint(int(pitems(q)[0].(map[string]any)["postId"].(float64))) != bad {
+		t.Fatalf("queue = %d %v", code, q)
+	}
+	if code, m, _ := e.do("POST", "/moderator/v1/reports/"+ok+"/dismiss", mod, nil); code != 200 || m["dismissed"].(float64) != 1 {
+		t.Errorf("dismiss = %d %v", code, m)
+	}
+	if code, _, _ := e.do("POST", "/moderator/v1/reports/"+bad+"/remove", tr, nil); code != 403 {
+		t.Errorf("traveler remove = %d, want 403", code)
+	}
+	if code, _, _ := e.do("POST", "/moderator/v1/reports/"+bad+"/remove", mod, nil); code != 204 {
+		t.Errorf("remove = %d, want 204", code)
+	}
+	if code, _, _ := e.do("POST", "/moderator/v1/reports/"+bad+"/remove", mod, nil); code != 404 {
+		t.Errorf("remove again = %d, want 404", code)
+	}
+	if code, _, _ := e.do("GET", "/v1/community/posts/"+bad, tr, nil); code != 404 {
+		t.Errorf("removed post still visible: %d", code)
+	}
+	// moderator actions are audited under their own names
+	e.requireAudit(ad, "moderator.report.dismiss", "moderator.post.remove")
+}

@@ -34,6 +34,7 @@ tags:
   - name: Partner portal
   - name: Admin portal
   - name: Staff portal
+  - name: Moderator portal
   - name: Health
 
 security:
@@ -2592,6 +2593,81 @@ paths:
                   serviceFeePercent: { type: number }
                   maintenanceBanner: { type: string }
                   supportEmail: { type: string }
+
+  /moderator/v1/dashboard:
+    servers:
+      - url: http://localhost:8080
+    get:
+      tags: [Moderator portal]
+      summary: Open moderation queue summary
+      operationId: modDashboard
+      responses:
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reportedPosts: { type: integer }
+                  openReports: { type: integer }
+                  mostReported: { $ref: '#/components/schemas/PostReportRow' }
+
+  /moderator/v1/reports:
+    servers:
+      - url: http://localhost:8080
+    get:
+      tags: [Moderator portal]
+      summary: Reported posts (most reported first)
+      operationId: modListReports
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { allOf: [ { $ref: '#/components/schemas/Page' }, { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/PostReportRow' } } } } ] }
+
+  /moderator/v1/reports/{postId}/dismiss:
+    servers:
+      - url: http://localhost:8080
+    post:
+      tags: [Moderator portal]
+      summary: Dismiss all reports of a post
+      operationId: modDismissReports
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { postId: { type: integer, format: int64 }, dismissed: { type: integer } } }
+
+  /moderator/v1/reports/{postId}/remove:
+    servers:
+      - url: http://localhost:8080
+    post:
+      tags: [Moderator portal]
+      summary: Remove a reported post
+      operationId: modRemoveReportedPost
+      parameters:
+        - { name: postId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '204': { description: No content }
 
 components:
   securitySchemes:

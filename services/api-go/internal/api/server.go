@@ -165,6 +165,7 @@ func (s *Server) Handler() http.Handler {
 	s.partnerRoutes(m)
 	s.adminRoutes(m)
 	s.staffRoutes(m)
+	s.moderatorRoutes(m)
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { httpx.NotFound(w, r) })
 	return m

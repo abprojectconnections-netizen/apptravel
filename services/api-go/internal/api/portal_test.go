@@ -10,11 +10,27 @@ func (e *env) loginAs(email string) string {
 	return m["accessToken"].(string)
 }
 
+// makeModerator registers a traveler and promotes it to moderator through the admin API; it returns that user's token.
+func (e *env) makeModerator(adminTok, email string) string {
+	e.t.Helper()
+	code, reg, _ := e.do("POST", "/v1/auth/register", "", map[string]any{"email": email, "password": "Passw0rd!", "firstName": "Mod", "lastName": "Erator"})
+	if code != 201 {
+		e.t.Fatalf("register %s: %d %v", email, code, reg)
+	}
+	_, me, _ := e.do("GET", "/v1/me", reg["accessToken"].(string), nil)
+	id := itoa(me["id"].(float64))
+	if code, m, _ := e.do("PATCH", "/admin/v1/users/"+id, adminTok, map[string]any{"role": "moderator"}); code != 200 {
+		e.t.Fatalf("promote: %d %v", code, m)
+	}
+	return reg["accessToken"].(string)
+}
+
 func pitems(m map[string]any) []any { v, _ := m["items"].([]any); return v }
 
 func TestPortalRBACMatrix(t *testing.T) {
 	e := newEnv(t, nil)
 	tok := map[string]string{"traveler": e.login(), "partner": e.loginAs("partner@tep.dev"), "staff": e.loginAs("staff@tep.dev"), "admin": e.loginAs("admin@tep.dev")}
+	tok["moderator"] = e.makeModerator(tok["admin"], "mod-matrix@example.com")
 	routes := []struct {
 		method, path string
 		allowed      []string
@@ -37,6 +53,8 @@ func TestPortalRBACMatrix(t *testing.T) {
 		{"GET", "/admin/v1/analytics", []string{"admin"}},
 		{"GET", "/admin/v1/settings", []string{"admin"}},
 		{"GET", "/admin/v1/reports", []string{"admin"}},
+		{"GET", "/moderator/v1/dashboard", []string{"moderator", "admin"}},
+		{"GET", "/moderator/v1/reports", []string{"moderator", "admin"}},
 		{"GET", "/staff/v1/dashboard", []string{"staff", "admin"}},
 		{"GET", "/staff/v1/bookings", []string{"staff", "admin"}},
 		{"GET", "/staff/v1/tickets", []string{"staff", "admin"}},

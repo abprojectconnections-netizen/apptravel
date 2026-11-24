@@ -4,7 +4,7 @@ import glob, re, sys
 import yaml
 
 spec = yaml.safe_load(open("docs/api/openapi.yaml"))
-ROOTED = ("/health", "/partner/v1", "/admin/v1", "/staff/v1")
+ROOTED = ("/health", "/partner/v1", "/admin/v1", "/staff/v1", "/moderator/v1")
 doc = set()
 for path, item in spec["paths"].items():
     full = path if path.startswith(ROOTED) else "/v1" + path
