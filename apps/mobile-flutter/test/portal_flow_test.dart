@@ -81,6 +81,80 @@ void main() {
     expect(find.text('admin.partner.update'), findsOneWidget);
   });
 
+  testWidgets('admin "more" menu: coupons, settings, payments and analytics pages work', (tester) async {
+    await _bootAs(tester, 'admin@tep.dev');
+    await _tab(tester, 'เพิ่มเติม');
+    expect(find.byKey(const Key('more-coupons')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('more-coupons')));
+    await tester.pumpAndSettle();
+    expect(find.text('WELCOME10'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('coupon-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('form-code')), 'QA50');
+    await tester.enterText(find.byKey(const Key('form-title')), 'ส่วนลดทดสอบ');
+    await tester.enterText(find.byKey(const Key('form-percentOff')), '50');
+    await tester.enterText(find.byKey(const Key('form-maxDiscount')), '300');
+    await tester.tap(find.byKey(const Key('form-ok')));
+    await tester.pumpAndSettle();
+    expect(find.text('QA50'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('more-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('setting-value-service_fee_percent')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('setting-service_fee_percent')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('prompt-text')), '5');
+    await tester.tap(find.byKey(const Key('prompt-ok')));
+    await tester.pumpAndSettle();
+    expect(find.text('5'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('more-payments')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('net-collected')), findsOneWidget);
+    expect(find.byKey(const Key('refund-1')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('refund-1')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('prompt-text')), 'ลูกค้าขอยกเลิก');
+    await tester.tap(find.byKey(const Key('prompt-ok')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('refund-1')), findsNothing);
+    await tester.tap(find.byKey(const Key('reconcile')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('reconcile-ok')), findsOneWidget);
+    await tester.tap(find.text('ปิด'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('more-analytics')));
+    await tester.pumpAndSettle();
+    expect(find.text('รายได้รายวัน (14 วันล่าสุด)'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('days-7')));
+    await tester.pumpAndSettle();
+    expect(find.text('การจองที่ชำระแล้ว'), findsOneWidget);
+  });
+
+  testWidgets('moderator portal: dashboard and report queue', (tester) async {
+    await _bootAs(tester, 'moderator@tep.dev');
+    expect(find.text('ผู้ดูแลชุมชน · ภาพรวม'), findsOneWidget);
+    expect(find.byKey(const Key('most-reported')), findsOneWidget);
+    await _tab(tester, 'คิวรายงาน');
+    expect(find.byKey(const Key('report-1')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('dismiss-2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('report-2')), findsNothing);
+    await tester.tap(find.byKey(const Key('remove-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('dialog-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('ไม่มีโพสต์ที่ถูกรายงาน'), findsOneWidget);
+  });
+
   testWidgets('traveler keeps the traveler app and cannot reach a portal', (tester) async {
     await _bootAs(tester, 'demo@tep.dev');
     expect(find.byType(NavigationBar), findsOneWidget);

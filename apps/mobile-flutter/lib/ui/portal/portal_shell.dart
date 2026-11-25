@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app_scope.dart';
+import 'admin_more_pages.dart';
 import 'admin_pages.dart';
+import 'moderator_pages.dart';
 import 'partner_pages.dart';
 import 'portal_kit.dart';
 import 'staff_pages.dart';
@@ -25,6 +27,11 @@ List<_Dest> _destinationsFor(String role) => switch (role) {
           _Dest('ผู้ใช้', Icons.manage_accounts_rounded, () => const AdminUsersPage()),
           _Dest('พาร์ทเนอร์', Icons.store_rounded, () => const AdminPartnersPage()),
           _Dest('ระบบ', Icons.settings_suggest_rounded, () => const AdminSystemPage()),
+          _Dest('เพิ่มเติม', Icons.apps_rounded, () => const AdminMorePage()),
+        ],
+      'moderator' => [
+          _Dest('ภาพรวม', Icons.dashboard_rounded, () => const ModeratorDashboardPage()),
+          _Dest('คิวรายงาน', Icons.flag_rounded, () => const ModeratorQueuePage()),
         ],
       _ => [
           _Dest('ภาพรวม', Icons.dashboard_rounded, () => const StaffDashboardPage()),
@@ -34,7 +41,7 @@ List<_Dest> _destinationsFor(String role) => switch (role) {
         ],
     };
 
-/// Back-office shell shown instead of the traveler app for the roles partner, admin and staff (boards 2.x / 3.x / 4.x).
+/// Back-office shell shown instead of the traveler app for the roles partner, admin, moderator and staff (boards 2.x / 3.x / 4.x).
 /// Each role gets its own bottom menu; every page talks to its own API prefix, which the server guards by role.
 class PortalShell extends StatefulWidget {
   const PortalShell({super.key, required this.role, this.modeLabel = 'mock'});

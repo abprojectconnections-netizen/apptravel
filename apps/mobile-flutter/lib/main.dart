@@ -69,12 +69,16 @@ class _TepAppState extends State<TepApp> {
     );
   }
 
-  /// Back-office roles get their own functional portal; travelers and
-  /// moderators (no portal in the MVP scope) use the traveler app.
+  /// Back-office roles (partner, admin, staff, moderator) get their own
+  /// functional portal; travelers use the traveler app.
   Widget _authenticatedShell(SessionController session, String modeLabel) {
     final role = session.user?.role ?? AccessRole.traveler;
-    if (const {AccessRole.partner, AccessRole.admin, AccessRole.staff}
-        .contains(role)) {
+    if (const {
+      AccessRole.partner,
+      AccessRole.admin,
+      AccessRole.staff,
+      AccessRole.moderator
+    }.contains(role)) {
       return PortalShell(
           key: ValueKey('portal-$role'), role: role, modeLabel: modeLabel);
     }

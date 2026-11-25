@@ -55,6 +55,23 @@ class MockPortal {
     (_tickets[2]['replies'] as List).add(_reply(2, 'staff', 'สมชาย ซ.', 'ส่งใบกำกับภาษีให้ทางอีเมลแล้วค่ะ', now.subtract(const Duration(hours: 71))));
     _nextReply = 3;
     _nextTicket = 4;
+    _coupons.addAll([
+      {'code': 'WELCOME10', 'title': 'ส่วนลดต้อนรับ 10%', 'detail': 'ขั้นต่ำ 1,000 บาท', 'percentOff': 10, 'minSpend': 1000.0, 'maxDiscount': 500.0, 'expiresOn': '', 'granted': 3, 'expired': false},
+      {'code': 'PHUKET200', 'title': 'ลด 200 บาท เที่ยวภูเก็ต', 'detail': 'เฉพาะรายการในภูเก็ต', 'percentOff': 0, 'minSpend': 1500.0, 'maxDiscount': 200.0, 'expiresOn': '2099-12-31', 'granted': 0, 'expired': false},
+      {'code': 'OLDDEAL', 'title': 'โปรโมชันหมดอายุ', 'detail': '', 'percentOff': 5, 'minSpend': 0.0, 'maxDiscount': 100.0, 'expiresOn': '2025-01-01', 'granted': 0, 'expired': true},
+    ]);
+    for (var i = 0; i < kMockFaqs.length; i++) {
+      _faqs.add({'id': kMockFaqs[i]['id'], 'question': kMockFaqs[i]['question'], 'answer': kMockFaqs[i]['answer'], 'sortNo': i});
+    }
+    _nextFaq = kMockFaqs.length + 1;
+    for (final d in kMockDestinations) {
+      _dests.add(Map<String, Object?>.of(d));
+    }
+    _nextDest = kMockDestinations.length + 1;
+    _reports.addAll([
+      {'postId': 1, 'postText': 'โฆษณาขายของ ติดต่อไลน์ด่วนที่นี่เลย', 'author': 'm_nok', 'reports': 3, 'reasons': ['spam', 'spam', 'spam'], 'lastReportAt': now.subtract(const Duration(hours: 2)).toIso8601String()},
+      {'postId': 2, 'postText': 'ข้อมูลร้านอาหารที่อาจไม่ถูกต้อง', 'author': 'm_ton', 'reports': 1, 'reasons': ['misinformation'], 'lastReportAt': now.subtract(const Duration(hours: 9)).toIso8601String()},
+    ]);
   }
 
   final DateTime Function() _now;
@@ -65,6 +82,14 @@ class MockPortal {
   final List<Json> _tickets = [];
   final List<Json> _audits = [];
   int _nextListing = 13, _nextCheck = 1, _nextReply = 1, _nextTicket = 1, _nextAudit = 1, _nextPartner = 3;
+
+  // admin content (coupons, FAQs, destinations, moderation queue, platform settings)
+  final List<Json> _coupons = [];
+  final List<Json> _faqs = [];
+  final List<Json> _dests = [];
+  final List<Json> _reports = [];
+  final Map<String, String> _settings = {'service_fee_percent': '3', 'maintenance_banner': '', 'support_email': ''};
+  int _nextFaq = 1, _nextDest = 1;
 
   // ---------- seeds ----------
   Json _user(int id, String email, String name, String role, DateTime now) =>
@@ -196,6 +221,17 @@ class MockPortal {
       return '/{}';
     });
     final b = body is Map ? body.cast<String, Object?>() : <String, Object?>{};
+    // admin resources keyed by a non-numeric id (coupon code, setting key)
+    final couponM = RegExp(r'^/admin/v1/coupons/([A-Za-z0-9_-]+)$').firstMatch(path);
+    if (couponM != null) {
+      _need(user, ['admin']);
+      return _aCouponWrite(user, method, couponM[1]!.toUpperCase(), b);
+    }
+    final settingM = RegExp(r'^/admin/v1/settings/([a-z_]+)$').firstMatch(path);
+    if (settingM != null && method == 'PUT') {
+      _need(user, ['admin']);
+      return _aPutSetting(user, settingM[1]!, b);
+    }
     switch ('$method $norm') {
       // traveler
       case 'POST /v1/partners/apply':
@@ -263,6 +299,78 @@ class MockPortal {
       case 'GET /admin/v1/system':
         _need(user, ['admin']);
         return {'version': 'mock', 'env': 'dev', 'mode': 'mock', 'serverTime': _now().toUtc().toIso8601String(), 'dependencies': {'mysql': 'disabled', 'redis': 'disabled'}};
+      case 'GET /admin/v1/coupons':
+        _need(user, ['admin']);
+        return _pageOf(_coupons, query);
+      case 'POST /admin/v1/coupons':
+        _need(user, ['admin']);
+        return _aCouponWrite(user, 'POST', '', b);
+      case 'GET /admin/v1/faqs':
+        _need(user, ['admin']);
+        return _pageOf(_sortedFaqs(), query);
+      case 'POST /admin/v1/faqs':
+        _need(user, ['admin']);
+        return _aFaqWrite(user, null, b);
+      case 'PUT /admin/v1/faqs/{}':
+        _need(user, ['admin']);
+        return _aFaqWrite(user, ids[0], b);
+      case 'DELETE /admin/v1/faqs/{}':
+        _need(user, ['admin']);
+        _find(_faqs, ids[0]);
+        _faqs.removeWhere((f) => f['id'] == ids[0]);
+        _audit(user, 'admin.faq.delete', 'faq', ids[0]);
+        return <String, Object?>{};
+      case 'GET /admin/v1/destinations':
+        _need(user, ['admin']);
+        return _pageOf(_dests, {'limit': '100'});
+      case 'POST /admin/v1/destinations':
+        _need(user, ['admin']);
+        return _aDestWrite(user, null, b);
+      case 'PUT /admin/v1/destinations/{}':
+        _need(user, ['admin']);
+        return _aDestWrite(user, ids[0], b);
+      case 'DELETE /admin/v1/destinations/{}':
+        _need(user, ['admin']);
+        return _aDestDelete(user, ids[0]);
+      case 'GET /admin/v1/reports':
+        _need(user, ['admin']);
+        return _pageOf(_reports, query);
+      case 'POST /admin/v1/reports/{}/dismiss':
+        _need(user, ['admin']);
+        return _reportAct(user, ids[0], false, 'admin');
+      case 'POST /admin/v1/reports/{}/remove':
+        _need(user, ['admin']);
+        return _reportAct(user, ids[0], true, 'admin');
+      case 'GET /moderator/v1/dashboard':
+        _need(user, ['moderator', 'admin']);
+        return _modDashboard();
+      case 'GET /moderator/v1/reports':
+        _need(user, ['moderator', 'admin']);
+        return _pageOf(_reports, query);
+      case 'POST /moderator/v1/reports/{}/dismiss':
+        _need(user, ['moderator', 'admin']);
+        return _reportAct(user, ids[0], false, 'moderator');
+      case 'POST /moderator/v1/reports/{}/remove':
+        _need(user, ['moderator', 'admin']);
+        return _reportAct(user, ids[0], true, 'moderator');
+      case 'GET /admin/v1/payments':
+        _need(user, ['admin']);
+        return _aPayments(query);
+      case 'GET /admin/v1/payments/summary':
+        _need(user, ['admin']);
+        return _aPaymentSummary();
+      case 'GET /admin/v1/payments/reconciliation':
+        _need(user, ['admin']);
+        return {'items': <Object?>[], 'total': 0, 'balanced': true};
+      case 'POST /admin/v1/payments/{}/refund':
+        _need(user, ['admin']);
+        return _aRefund(user, ids[0], b);
+      case 'GET /admin/v1/analytics':
+        _need(user, ['admin']);
+        return _aAnalytics(query);
+      case 'GET /admin/v1/settings':
+        _need(user, ['admin']);
+        return _aSettings();
       // staff
       case 'GET /staff/v1/dashboard':
         _need(user, ['staff', 'admin']);
@@ -293,6 +401,265 @@ class MockPortal {
         return _sReport(user, query);
     }
     throw _notFound();
+  }
+
+  // ---------- admin content ----------
+  List<Json> _sortedFaqs() {
+    final l = List<Json>.of(_faqs);
+    l.sort((a, c) {
+      final d = (a['sortNo'] as int).compareTo(c['sortNo'] as int);
+      return d != 0 ? d : (a['id'] as int).compareTo(c['id'] as int);
+    });
+    return l;
+  }
+
+  String _text(Json b, String k) => '${b[k] ?? ''}'.trim();
+
+  Json _aCouponWrite(UserProfile u, String method, String code, Json b) {
+    final create = method == 'POST';
+    final c = create ? _text(b, 'code').toUpperCase() : code;
+    if (create && !RegExp(r'^[A-Z0-9_-]{3,40}$').hasMatch(c)) throw _inv('code', '3-40 characters: A-Z, 0-9, _ or -');
+    final existing = _coupons.where((e) => e['code'] == c).firstOrNull;
+    if (method == 'DELETE') {
+      if (existing == null) throw _notFound();
+      if ((existing['granted'] as int) > 0) throw _conflict('coupon is held by travelers; set an expiry date instead of deleting it');
+      _coupons.remove(existing);
+      _audit(u, 'admin.coupon.delete', 'coupon', 0, {'code': c});
+      return <String, Object?>{};
+    }
+    if (method != 'POST' && method != 'PUT') throw _notFound();
+    if (!create && existing == null) throw _notFound();
+    final title = _text(b, 'title');
+    if (title.length < 2 || title.length > 190) throw _inv('title', '2-190 characters');
+    final pct = (b['percentOff'] as num?)?.toInt() ?? 0;
+    if (pct < 0 || pct > 100) throw _inv('percentOff', '0..100 (0 = fixed amount)');
+    final maxD = (b['maxDiscount'] as num?)?.toDouble() ?? 0.0;
+    if (pct == 0 && maxD <= 0) throw _inv('maxDiscount', 'required for a fixed-amount coupon');
+    final exp = _text(b, 'expiresOn');
+    if (exp.isNotEmpty && DateTime.tryParse(exp) == null) throw _inv('expiresOn', 'use YYYY-MM-DD');
+    if (create && existing != null) throw _conflict('coupon code already exists');
+    final row = <String, Object?>{
+      'code': c,
+      'title': title,
+      'detail': _text(b, 'detail'),
+      'percentOff': pct,
+      'minSpend': (b['minSpend'] as num?)?.toDouble() ?? 0.0,
+      'maxDiscount': maxD,
+      'expiresOn': exp,
+      'granted': existing?['granted'] ?? 0,
+      'expired': exp.isNotEmpty && DateTime.parse(exp).isBefore(_startOfDay(_now())),
+    };
+    if (create) {
+      _coupons.add(row);
+    } else {
+      _coupons[_coupons.indexOf(existing!)] = row;
+    }
+    _audit(u, create ? 'admin.coupon.create' : 'admin.coupon.update', 'coupon', 0, {'code': c});
+    return row;
+  }
+
+  Json _aFaqWrite(UserProfile u, int? id, Json b) {
+    final q = _text(b, 'question'), a = _text(b, 'answer');
+    if (q.length < 3 || q.length > 255) throw _inv('question', '3-255 characters');
+    if (a.length < 3 || a.length > 2000) throw _inv('answer', '3-2000 characters');
+    final cur = id == null ? null : _find(_faqs, id);
+    final sortNo = (b['sortNo'] as num?)?.toInt() ?? (cur?['sortNo'] as int?) ?? (_faqs.isEmpty ? 0 : _faqs.map((f) => f['sortNo'] as int).reduce((x, y) => x > y ? x : y) + 1);
+    final row = <String, Object?>{'id': id ?? _nextFaq++, 'question': q, 'answer': a, 'sortNo': sortNo};
+    if (cur == null) {
+      _faqs.add(row);
+    } else {
+      _faqs[_faqs.indexOf(cur)] = row;
+    }
+    _audit(u, id == null ? 'admin.faq.create' : 'admin.faq.update', 'faq', row['id'] as int);
+    return row;
+  }
+
+  Json _aDestWrite(UserProfile u, int? id, Json b) {
+    final slug = _text(b, 'slug').toLowerCase(), name = _text(b, 'name');
+    if (!RegExp(r'^[a-z0-9]+(-[a-z0-9]+)*$').hasMatch(slug) || slug.length < 2 || slug.length > 80) throw _inv('slug', '2-80 characters: a-z, 0-9 and single hyphens');
+    if (name.length < 2 || name.length > 120) throw _inv('name', '2-120 characters');
+    final cur = id == null ? null : _find(_dests, id);
+    if (_dests.any((d) => d['slug'] == slug && d['id'] != id)) throw _conflict('a destination with this slug already exists');
+    final row = <String, Object?>{'id': id ?? _nextDest++, 'slug': slug, 'name': name, 'subtitle': _text(b, 'subtitle'), 'gradientCss': _text(b, 'gradientCss')};
+    if (cur == null) {
+      _dests.add(row);
+    } else {
+      _dests[_dests.indexOf(cur)] = row;
+    }
+    _audit(u, id == null ? 'admin.destination.create' : 'admin.destination.update', 'destination', row['id'] as int, {'slug': slug});
+    return row;
+  }
+
+  Json _aDestDelete(UserProfile u, int id) {
+    _find(_dests, id);
+    if (_listings.any((l) => l['destinationId'] == id)) throw _conflict('listings still belong to this destination; move or remove them first');
+    _dests.removeWhere((d) => d['id'] == id);
+    _audit(u, 'admin.destination.delete', 'destination', id);
+    return <String, Object?>{};
+  }
+
+  Json _reportAct(UserProfile u, int postId, bool remove, String who) {
+    final row = _reports.where((r) => r['postId'] == postId).firstOrNull;
+    if (row == null) throw _notFound();
+    _reports.remove(row);
+    _audit(u, remove ? '$who.post.remove' : '$who.report.dismiss', 'post', postId, remove ? null : {'reports': row['reports']});
+    return remove ? <String, Object?>{} : {'postId': postId, 'dismissed': row['reports']};
+  }
+
+  Json _modDashboard() {
+    var open = 0;
+    Json? worst;
+    for (final r in _reports) {
+      open += r['reports'] as int;
+      if (worst == null || (r['reports'] as int) > (worst['reports'] as int)) worst = r;
+    }
+    return {'reportedPosts': _reports.length, 'openReports': open, 'mostReported': worst};
+  }
+
+  List<Json> _payments() {
+    final out = <Json>[];
+    for (final b in _bookings) {
+      final st = '${b['status']}';
+      if (st == 'pending_payment') continue;
+      final refunded = st == 'cancelled' && b['refundAmount'] != null;
+      if (st == 'cancelled' && !refunded) continue;
+      out.add({
+        'bookingId': b['id'],
+        'bookingNumber': b['bookingNumber'],
+        'traveler': b['travelerEmail'],
+        'method': 'promptpay',
+        'status': refunded ? 'refunded' : 'succeeded',
+        'amount': b['amount'],
+        'confirmedAt': b['date'],
+        'bookingStatus': st,
+        if (refunded) 'refundAmount': b['refundAmount'],
+      });
+    }
+    out.sort((a, c) => '${c['confirmedAt']}'.compareTo('${a['confirmedAt']}'));
+    return out;
+  }
+
+  Json _aPayments(Map<String, String?> q) {
+    final status = q['status'] ?? '', method = q['method'] ?? '';
+    if (status.isNotEmpty && !const ['pending', 'succeeded', 'failed', 'refunded'].contains(status)) throw _inv('status', 'must be pending, succeeded, failed or refunded');
+    if (method.isNotEmpty && !const ['promptpay', 'card', 'wallet'].contains(method)) throw _inv('method', 'must be promptpay, card or wallet');
+    final text = (q['q'] ?? '').toLowerCase();
+    final rows = _payments().where((p) {
+      if (status.isNotEmpty && p['status'] != status) return false;
+      if (method.isNotEmpty && p['method'] != method) return false;
+      return text.isEmpty || '${p['bookingNumber']}'.toLowerCase().contains(text) || '${p['traveler']}'.toLowerCase().contains(text);
+    }).toList();
+    return _pageOf(rows, q);
+  }
+
+  Json _aPaymentSummary() {
+    final by = <String, List<num>>{};
+    for (final p in _payments()) {
+      final e = by.putIfAbsent('${p['status']}', () => [0, 0.0]);
+      e[0] = e[0] + 1;
+      e[1] = e[1] + (p['amount'] as num);
+    }
+    final keys = by.keys.toList()..sort();
+    return {
+      'items': [for (final k in keys) {'status': k, 'count': by[k]![0], 'amount': _r2(by[k]![1].toDouble())}],
+      'netCollected': _r2((by['succeeded']?[1] ?? 0).toDouble()),
+    };
+  }
+
+  Json _aRefund(UserProfile u, int bookingId, Json b) {
+    final reason = _text(b, 'reason');
+    if (reason.length < 3 || reason.length > 255) throw _inv('reason', '3-255 characters');
+    final bk = _find(_bookings, bookingId);
+    if (bk['status'] != 'confirmed') throw _conflict('only paid, not yet completed bookings can be refunded; this one is ${bk['status']}');
+    bk['status'] = 'cancelled';
+    bk['cancelReason'] = 'admin refund: $reason';
+    bk['refundAmount'] = bk['amount'];
+    _audit(u, 'admin.payment.refund', 'booking', bookingId, {'amount': bk['amount'], 'reason': reason});
+    return {'bookingId': bookingId, 'bookingNumber': bk['bookingNumber'], 'status': 'cancelled', 'refundAmount': bk['amount']};
+  }
+
+  Json _aAnalytics(Map<String, String?> q) {
+    final days = int.tryParse(q['days'] ?? '30');
+    if (days == null || days < 1 || days > 365) throw _inv('days', 'must be 1..365');
+    final today = _startOfDay(_now());
+    final series = <Json>[];
+    var bookings = 0, newUsers = 0;
+    var revenue = 0.0;
+    final byType = <String, List<num>>{};
+    final byStatus = <String, int>{};
+    for (var i = days - 1; i >= 0; i--) {
+      final day = today.subtract(Duration(days: i));
+      final next = day.add(const Duration(days: 1));
+      var n = 0;
+      var rev = 0.0;
+      for (final b in _bookings) {
+        final d = DateTime.parse('${b['date']}');
+        if (d.isBefore(day) || !d.isBefore(next)) continue;
+        byStatus['${b['status']}'] = (byStatus['${b['status']}'] ?? 0) + 1;
+        if (b['status'] == 'confirmed' || b['status'] == 'completed') {
+          n++;
+          rev += (b['amount'] as num).toDouble();
+          final t = byType.putIfAbsent('${b['type']}', () => [0, 0.0]);
+          t[0] = t[0] + 1;
+          t[1] = t[1] + (b['amount'] as num);
+        }
+      }
+      var nu = 0;
+      for (final u in _users) {
+        final d = DateTime.parse('${u['createdAt']}');
+        if (!d.isBefore(day) && d.isBefore(next)) nu++;
+      }
+      bookings += n;
+      revenue += rev;
+      newUsers += nu;
+      series.add({'date': '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}', 'bookings': n, 'revenue': _r2(rev), 'newUsers': nu});
+    }
+    final all = byStatus.values.fold<int>(0, (a, c) => a + c);
+    return {
+      'days': days,
+      'series': series,
+      'byType': [for (final e in byType.entries) {'type': e.key, 'bookings': e.value[0], 'revenue': _r2(e.value[1].toDouble())}],
+      'byStatus': byStatus,
+      'totals': {
+        'bookings': bookings,
+        'revenue': _r2(revenue),
+        'newUsers': newUsers,
+        'avgOrderValue': bookings == 0 ? 0.0 : _r2(revenue / bookings),
+        'cancellationRatePct': all == 0 ? 0.0 : _r2((byStatus['cancelled'] ?? 0) * 100 / all),
+      },
+    };
+  }
+
+  static const _settingMeta = {
+    'service_fee_percent': ('number', '3', 'ค่าธรรมเนียมบริการที่บวกในทุกการจอง (เปอร์เซ็นต์ 0-20)'),
+    'maintenance_banner': ('text', '', 'ประกาศถึงผู้เดินทาง (ว่าง = ซ่อน) สูงสุด 200 ตัวอักษร'),
+    'support_email': ('text', '', 'อีเมลฝ่ายช่วยเหลือที่แสดงในแอป (ว่าง = ซ่อน)'),
+  };
+
+  Json _aSettings() {
+    final items = [
+      for (final e in _settingMeta.entries) {'key': e.key, 'value': _settings[e.key], 'default': e.value.$2, 'type': e.value.$1, 'description': e.value.$3},
+    ];
+    return {'items': items, 'total': items.length, 'offset': 0, 'limit': items.length};
+  }
+
+  Json _aPutSetting(UserProfile u, String key, Json b) {
+    final meta = _settingMeta[key];
+    if (meta == null) throw _notFound();
+    var v = _text(b, 'value');
+    if (key == 'service_fee_percent') {
+      final f = double.tryParse(v);
+      if (f == null || f < 0 || f > 20) throw _inv('value', 'a number between 0 and 20');
+      v = _r2(f).toString().replaceAll(RegExp(r'\.0$'), '');
+    } else if (key == 'maintenance_banner') {
+      if (v.length > 200) throw _inv('value', 'at most 200 characters');
+    } else if (key == 'support_email') {
+      if (v.isNotEmpty && (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v) || v.length > 120)) throw _inv('value', 'a valid e-mail address (max 120 characters)');
+    }
+    final old = _settings[key];
+    _settings[key] = v;
+    _audit(u, 'admin.setting.update', 'setting', 0, {'key': key, 'from': old, 'to': v});
+    return {'key': key, 'value': v, 'default': meta.$2, 'type': meta.$1, 'description': meta.$3};
   }
 
   // ---------- partners ----------

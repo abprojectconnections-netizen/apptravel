@@ -65,7 +65,7 @@ void main() {
     });
   }
 
-  testWidgets('moderator has no portal and uses the traveler app',
+  testWidgets('moderator gets the moderation portal (not the traveler app)',
       (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -77,7 +77,9 @@ void main() {
     await tester.enterText(find.byKey(const Key('password')), 'Passw0rd!');
     await tester.tap(find.byKey(const Key('submit')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('portal-nav')), findsNothing);
-    expect(find.byKey(const Key('desktop-navigation')), findsOneWidget);
+    expect(find.byKey(const Key('portal-nav')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-navigation')), findsNothing);
+    final title = tester.widget<Text>(find.byKey(const Key('portal-title')));
+    expect(title.data, startsWith('ผู้ดูแลชุมชน'));
   });
 }

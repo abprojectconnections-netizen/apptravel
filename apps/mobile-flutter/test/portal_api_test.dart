@@ -97,4 +97,85 @@ void main() {
     expect(out['status'], 'open');
     expect((await api.tickets()).first.replies.length, 1);
   });
+
+  test('admin manages coupons, FAQs and destinations with validation and conflicts', () async {
+    final api = await as_('admin@tep.dev');
+    await expectLater(api.portal('POST', '/admin/v1/coupons', body: {'code': 'x', 'title': 'ทดสอบ'}), status(422));
+    await expectLater(api.portal('POST', '/admin/v1/coupons', body: {'code': 'WELCOME10', 'title': 'ซ้ำ', 'percentOff': 5}), status(409));
+    final c = await api.portal('POST', '/admin/v1/coupons', body: {'code': 'qa50', 'title': 'ทดสอบ 50', 'percentOff': 50, 'maxDiscount': 300});
+    expect(c['code'], 'QA50');
+    final up = await api.portal('PUT', '/admin/v1/coupons/QA50', body: {'title': 'ทดสอบ 50 ใหม่', 'percentOff': 40, 'maxDiscount': 300});
+    expect(up['title'], 'ทดสอบ 50 ใหม่');
+    await expectLater(api.portal('DELETE', '/admin/v1/coupons/WELCOME10'), status(409)); // held by travelers
+    await api.portal('DELETE', '/admin/v1/coupons/QA50');
+    await expectLater(api.portal('DELETE', '/admin/v1/coupons/QA50'), status(404));
+
+    final before = (await api.portal('GET', '/admin/v1/faqs'))['total'] as int;
+    final f = await api.portal('POST', '/admin/v1/faqs', body: {'question': 'ทดสอบคำถาม', 'answer': 'ทดสอบคำตอบ'});
+    expect((await api.portal('GET', '/admin/v1/faqs'))['total'], before + 1);
+    await api.portal('DELETE', '/admin/v1/faqs/${f['id']}');
+    expect((await api.portal('GET', '/admin/v1/faqs'))['total'], before);
+
+    await expectLater(api.portal('POST', '/admin/v1/destinations', body: {'slug': 'Bad Slug', 'name': 'ทดสอบ'}), status(422));
+    await expectLater(api.portal('POST', '/admin/v1/destinations', body: {'slug': 'phuket', 'name': 'ซ้ำ'}), status(409));
+    await expectLater(api.portal('DELETE', '/admin/v1/destinations/1'), status(409)); // listings still belong to it
+    final d = await api.portal('POST', '/admin/v1/destinations', body: {'slug': 'qa-dest', 'name': 'ปลายทางทดสอบ'});
+    await api.portal('DELETE', '/admin/v1/destinations/${d['id']}');
+    final audit = await api.portal('GET', '/admin/v1/audit-logs', query: {'action': 'admin.coupon.'});
+    expect(audit['total'], 3);
+  });
+
+  test('moderator portal: queue, dismiss, remove; roles are enforced', () async {
+    final mod = await as_('moderator@tep.dev');
+    final dash = await mod.portal('GET', '/moderator/v1/dashboard');
+    expect(dash['reportedPosts'], 2);
+    expect(dash['openReports'], 4);
+    await expectLater(mod.portal('GET', '/admin/v1/reports'), status(403));
+    await expectLater(mod.portal('GET', '/admin/v1/users'), status(403));
+    await expectLater((await as_('staff@tep.dev')).portal('GET', '/moderator/v1/reports'), status(403));
+    await expectLater((await as_('demo@tep.dev')).portal('GET', '/moderator/v1/dashboard'), status(403));
+    final q = await mod.portal('GET', '/moderator/v1/reports');
+    expect(q['total'], 2);
+    expect((await mod.portal('POST', '/moderator/v1/reports/2/dismiss'))['dismissed'], 1);
+    await mod.portal('POST', '/moderator/v1/reports/1/remove');
+    await expectLater(mod.portal('POST', '/moderator/v1/reports/1/remove'), status(404));
+    expect((await mod.portal('GET', '/moderator/v1/dashboard'))['reportedPosts'], 0);
+    final admin = await as_('admin@tep.dev');
+    expect((await admin.portal('GET', '/admin/v1/audit-logs', query: {'action': 'moderator.'}))['total'], 2);
+  });
+
+  test('admin payments: list, summary, reconciliation and a guarded refund', () async {
+    final api = await as_('admin@tep.dev');
+    await expectLater(api.portal('GET', '/admin/v1/payments', query: {'status': 'bogus'}), status(422));
+    final list = await api.portal('GET', '/admin/v1/payments');
+    expect(list['total'], 2); // booking 3 is still awaiting payment
+    final sum = await api.portal('GET', '/admin/v1/payments/summary');
+    expect((sum['netCollected'] as num) > 0, isTrue);
+    expect((await api.portal('GET', '/admin/v1/payments/reconciliation'))['balanced'], true);
+    await expectLater(api.portal('POST', '/admin/v1/payments/1/refund', body: {'reason': 'x'}), status(422));
+    await expectLater(api.portal('POST', '/admin/v1/payments/2/refund', body: {'reason': 'ลูกค้าขอ'}), status(409)); // completed
+    final r = await api.portal('POST', '/admin/v1/payments/1/refund', body: {'reason': 'บริการไม่ตรงตามที่ระบุ'});
+    expect(r['status'], 'cancelled');
+    await expectLater(api.portal('POST', '/admin/v1/payments/1/refund', body: {'reason': 'ซ้ำ'}), status(409));
+    final refunded = await api.portal('GET', '/admin/v1/payments', query: {'status': 'refunded'});
+    expect(refunded['total'], 1);
+    await expectLater((await as_('staff@tep.dev')).portal('GET', '/admin/v1/payments'), status(403));
+  });
+
+  test('admin analytics and platform settings', () async {
+    final api = await as_('admin@tep.dev');
+    await expectLater(api.portal('GET', '/admin/v1/analytics', query: {'days': '0'}), status(422));
+    final a = await api.portal('GET', '/admin/v1/analytics', query: {'days': '7'});
+    expect((a['series'] as List).length, 7);
+    expect((a['totals'] as Map)['bookings'], 2);
+    final settings = await api.portal('GET', '/admin/v1/settings');
+    expect(settings['total'], 3);
+    await expectLater(api.portal('PUT', '/admin/v1/settings/service_fee_percent', body: {'value': '21'}), status(422));
+    await expectLater(api.portal('PUT', '/admin/v1/settings/support_email', body: {'value': 'nope'}), status(422));
+    await expectLater(api.portal('PUT', '/admin/v1/settings/unknown_key', body: {'value': 'x'}), status(404));
+    final fee = await api.portal('PUT', '/admin/v1/settings/service_fee_percent', body: {'value': '5'});
+    expect(fee['value'], '5');
+    final after = await api.portal('GET', '/admin/v1/settings');
+    expect((after['items'] as List).cast<Map>().firstWhere((e) => e['key'] == 'service_fee_percent')['value'], '5');
+  });
 }
