@@ -1332,7 +1332,7 @@ paths:
   /media/presign:
     post:
       tags: [Media]
-      summary: Get presigned upload URL
+      summary: Get presigned upload URL (listing_image is limited to approved partners, staff and admin)
       operationId: presignUpload
       requestBody:
         required: true
@@ -1362,6 +1362,7 @@ paths:
                 properties:
                   uploadUrl: { type: string, format: uri, description: PUT the file here with the same Content-Type }
                   objectKey: { type: string }
+                  publicUrl: { type: string, format: uri, description: Where the object is readable after upload (use it as a listing imageUrl) }
                   expiresIn: { type: integer, description: Seconds the URL stays valid }
 
   /devices/push-tokens:

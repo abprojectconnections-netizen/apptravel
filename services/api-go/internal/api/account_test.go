@@ -207,3 +207,20 @@ func TestWebhookDisabledWithoutSecret(t *testing.T) {
 		t.Fatal(c)
 	}
 }
+
+func TestListingImagePresignByRole(t *testing.T) {
+	e := newEnv(t, nil)
+	ad := e.loginAs("admin@tep.dev")
+	body := map[string]any{"contentType": "image/webp", "purpose": "listing_image"}
+	for name, tok := range map[string]string{"partner": e.loginAs("partner@tep.dev"), "staff": e.loginAs("staff@tep.dev"), "admin": ad} {
+		code, m, _ := e.do("POST", "/v1/media/presign", tok, body)
+		if code != 200 || m["objectKey"] == nil || m["publicUrl"] == nil || !strings.HasPrefix(m["objectKey"].(string), "listing_image/") {
+			t.Errorf("%s: presign = %d %v", name, code, m)
+		}
+	}
+	for name, tok := range map[string]string{"traveler": e.login(), "moderator": e.makeModerator(ad, "mod-img@example.com")} {
+		if code, _, _ := e.do("POST", "/v1/media/presign", tok, body); code != 403 {
+			t.Errorf("%s: presign listing image = %d, want 403", name, code)
+		}
+	}
+}

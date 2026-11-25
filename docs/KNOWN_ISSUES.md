@@ -6,11 +6,13 @@ _Last reviewed: 2026-11-22 (branch `feat/phase-03-sprint-1`)._
 - `docker compose up --build` on a real Docker daemon (the authoring sandbox has no daemon). MySQL 8 was verified separately with the real API binary.
 - Flutter on a device/emulator/browser: CI (analyze + 47 tests + contract test) passes, but no human UI pass after the `main` UI merge.
 - PowerShell scripts (`setup-env.ps1`, `db-backup.ps1`, `db-restore.ps1`) have not been executed.
+- The `minio-init` compose service (creates the `tep-media` bucket with anonymous read) and the S3 wiring of the `api` service were written without a Docker daemon and are untested.
+- Listing image upload is API-only: the Flutter partner form still takes an image URL (no image picker yet). `POST /v1/media/presign` (purpose `listing_image`) returns `uploadUrl` + `publicUrl` for approved partners, staff and admin.
+- The Flutter admin pages (payments, analytics, coupons, FAQs, destinations, reports, settings) and the moderator portal were written without a Flutter SDK; only CI has compiled them.
 
 ## Deferred by scope (`docs/requirements/mvp-scope.md`)
 - Partner payouts / bank accounts (earnings are reported gross / commission / net only).
 - Live chat (staff support uses tickets; live chat needs a WebSocket service).
-- Moderator portal (role kept in the schema, unused by the portals).
 - Real payment gateway, FCM push, S3 media lifecycle, external weather/LLM services (need credentials). Payment runs on a mock PSP + signed webhook.
 - Map and weather use deferred integrations or external deep links.
 
