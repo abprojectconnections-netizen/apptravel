@@ -17,6 +17,7 @@ import (
 	"github.com/Bas-travel/tep/services/api-go/internal/auth"
 	"github.com/Bas-travel/tep/services/api-go/internal/config"
 	"github.com/Bas-travel/tep/services/api-go/internal/httpx"
+	"github.com/Bas-travel/tep/services/api-go/internal/stripe"
 )
 
 // Check reports whether a dependency is reachable. Nil Check map entry => "disabled".
@@ -28,8 +29,9 @@ type Server struct {
 	log         *slog.Logger
 	now         func() time.Time
 	checks      map[string]Check
-	demoDataset bool          // seed the full demo dataset (cfg.DemoDataset)
-	settleAfter time.Duration // mock PSP (MOCK_PAYMENT=true): how long a pending intent stays pending
+	demoDataset bool           // seed the full demo dataset (cfg.DemoDataset)
+	settleAfter time.Duration  // mock PSP (MOCK_PAYMENT=true): how long a pending intent stays pending
+	stripe      *stripe.Client // nil unless STRIPE_SECRET_KEY (test mode) is configured
 }
 
 // Option customises New.
@@ -40,6 +42,9 @@ func WithRepo(r Repo) Option { return func(s *Server) { s.repo = r } }
 
 func New(cfg config.Config, log *slog.Logger, checks map[string]Check, opts ...Option) *Server {
 	s := &Server{cfg: cfg, repo: newMemRepo(), log: log, now: time.Now, checks: checks, settleAfter: 3 * time.Second, demoDataset: cfg.DemoDataset}
+	if cfg.StripeSecretKey != "" {
+		s.stripe = stripe.New(cfg.StripeSecretKey, cfg.StripeAPIBase)
+	}
 	for _, o := range opts {
 		o(s)
 	}

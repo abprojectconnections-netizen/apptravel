@@ -1395,15 +1395,26 @@ paths:
       tags: [Webhooks]
       security: []
       summary: Payment provider webhook (signature verified)
+      description: |
+        `provider=stripe` (SANDBOX / test mode only) accepts raw Stripe events authenticated by `Stripe-Signature`
+        (t=..,v1=.. HMAC-SHA256 over `t.payload`, 5-minute tolerance, STRIPE_WEBHOOK_SECRET). It applies
+        `payment_intent.succeeded` / `payment_intent.payment_failed` (matched by `metadata.intent_id`; the amount in satang
+        must equal the stored intent), acknowledges other event types, rejects `livemode: true`, and is idempotent per
+        event id. For `stripe` the body is the Stripe event and `X-Signature` is not used. Other providers use the body below.
       operationId: paymentWebhook
       parameters:
         - name: provider
           in: path
           required: true
           schema: { type: string }
+        - name: Stripe-Signature
+          in: header
+          required: false
+          description: Required when provider=stripe
+          schema: { type: string }
         - name: X-Signature
           in: header
-          required: true
+          required: false
           description: Hex HMAC-SHA256 of the raw body keyed with WEBHOOK_SECRET; the endpoint answers 404 while no secret is configured
           schema: { type: string }
       requestBody:

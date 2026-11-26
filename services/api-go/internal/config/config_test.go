@@ -76,3 +76,19 @@ func TestTemplatePlaceholderIsRejectedWithHint(t *testing.T) {
 		t.Fatalf("expected hint to run setup-env, got %v", err)
 	}
 }
+
+func TestStripeKeysAreTestModeOnly(t *testing.T) {
+	c := valid()
+	c.StripeSecretKey, c.StripeWebhookSecret = "sk_live_abc", "whsec_x"
+	if c.Validate() == nil {
+		t.Fatal("live key must be rejected")
+	}
+	c.StripeSecretKey, c.StripeWebhookSecret = "sk_test_abc", ""
+	if c.Validate() == nil {
+		t.Fatal("webhook secret required with a key")
+	}
+	c.StripeWebhookSecret = "whsec_x"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/Bas-travel/tep/services/api-go/internal/stripe"
 )
 
 const PlaceholderJWTSecret = "change-me-dev-only-secret-change-me"
@@ -25,6 +27,9 @@ type Config struct {
 
 	// WebhookSecret authenticates PSP callbacks (HMAC-SHA256). Empty disables the webhook endpoint.
 	WebhookSecret string
+
+	// Stripe SANDBOX (test mode only). Empty StripeSecretKey disables Stripe; sk_live_ keys are rejected.
+	StripeSecretKey, StripeWebhookSecret, StripeAPIBase string
 
 	// S3-compatible object storage (MinIO in DEV) for presigned uploads. S3Endpoint is the URL clients can reach.
 	S3Endpoint, S3Bucket, S3Region, S3AccessKey, S3SecretKey string
@@ -51,11 +56,15 @@ func Load() Config {
 		Version:     getenv("APP_VERSION", "0.1.0-sprint1"),
 
 		WebhookSecret: getenv("WEBHOOK_SECRET", ""),
-		S3Endpoint:    getenv("S3_ENDPOINT", ""),
-		S3Bucket:      getenv("S3_BUCKET", "tep-media"),
-		S3Region:      getenv("S3_REGION", "us-east-1"),
-		S3AccessKey:   getenv("S3_ACCESS_KEY", ""),
-		S3SecretKey:   getenv("S3_SECRET_KEY", ""),
+
+		StripeSecretKey:     getenv("STRIPE_SECRET_KEY", ""),
+		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
+		StripeAPIBase:       getenv("STRIPE_API_BASE", ""),
+		S3Endpoint:          getenv("S3_ENDPOINT", ""),
+		S3Bucket:            getenv("S3_BUCKET", "tep-media"),
+		S3Region:            getenv("S3_REGION", "us-east-1"),
+		S3AccessKey:         getenv("S3_ACCESS_KEY", ""),
+		S3SecretKey:         getenv("S3_SECRET_KEY", ""),
 	}
 }
 
@@ -86,6 +95,9 @@ func (c Config) Validate() error {
 	}
 	if c.AppEnv != "dev" && c.WebhookSecret == PlaceholderWebhookSecret {
 		errs = append(errs, errors.New("WEBHOOK_SECRET is the default placeholder; set a real secret outside dev"))
+	}
+	if err := stripe.ValidateKeys(c.StripeSecretKey, c.StripeWebhookSecret); err != nil {
+		errs = append(errs, err)
 	}
 	if (c.S3AccessKey == "") != (c.S3SecretKey == "") {
 		errs = append(errs, errors.New("S3_ACCESS_KEY and S3_SECRET_KEY must be set together"))

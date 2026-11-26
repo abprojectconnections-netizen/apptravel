@@ -234,7 +234,12 @@ func (s *Server) createIntent(w http.ResponseWriter, r *http.Request, uid int64)
 			}
 		} else {
 			pi.Status = "pending"
-			if req.Method == "promptpay" {
+			if s.stripe != nil {
+				if err := s.stripeCreate(r.Context(), pi); err != nil {
+					s.log.Error("stripe create intent failed", "err", err)
+					return 0, nil, errPSPUnavailable
+				}
+			} else if req.Method == "promptpay" {
 				pi.PromptPayQrURL = "https://mock.tep.local/qr/" + pi.ID + ".png"
 			} else {
 				pi.ClientSecret = pi.ID + "_secret_mock"
@@ -275,7 +280,7 @@ func (s *Server) finishIntent(tx Tx, pi *intentRec, status string) error {
 
 // settleIfDue is the mock PSP (MOCK_PAYMENT=true): a pending intent succeeds after settleAfter.
 func (s *Server) settleIfDue(tx Tx, pi *intentRec) error {
-	if pi.Status == "pending" && s.cfg.MockPayment && s.now().Sub(pi.Created) >= s.settleAfter {
+	if pi.Status == "pending" && s.cfg.MockPayment && s.stripe == nil && s.now().Sub(pi.Created) >= s.settleAfter {
 		return s.finishIntent(tx, pi, "succeeded")
 	}
 	return nil
@@ -363,6 +368,10 @@ func (s *Server) topUp(w http.ResponseWriter, r *http.Request, uid int64) {
 // WEBHOOK_SECRET; each (provider, eventId) is processed once.
 func (s *Server) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 	provider := r.PathValue("provider")
+	if provider == "stripe" {
+		s.stripeWebhook(w, r)
+		return
+	}
 	if s.cfg.WebhookSecret == "" || (provider != "promptpay" && provider != "card" && provider != "mock") {
 		httpx.NotFound(w, r)
 		return
