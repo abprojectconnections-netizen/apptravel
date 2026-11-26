@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Bas-travel/tep/services/api-go/internal/stripe"
@@ -28,6 +29,10 @@ type Config struct {
 	// WebhookSecret authenticates PSP callbacks (HMAC-SHA256). Empty disables the webhook endpoint.
 	WebhookSecret string
 
+	// Rate limiting (per client IP, per minute). 0 disables. TrustProxy reads X-Forwarded-For (only behind your own proxy).
+	RateLimitPerMin, AuthRateLimitPerMin int
+	TrustProxy                           bool
+
 	// Stripe SANDBOX (test mode only). Empty StripeSecretKey disables Stripe; sk_live_ keys are rejected.
 	StripeSecretKey, StripeWebhookSecret, StripeAPIBase string
 
@@ -38,6 +43,21 @@ type Config struct {
 func getenv(k, def string) string {
 	if v, ok := os.LookupEnv(k); ok && v != "" {
 		return v
+	}
+	return def
+}
+
+// devOff keeps rate limits off in dev (E2E/contract runs share one IP) unless explicitly configured.
+func devOff(v string) string {
+	if getenv("APP_ENV", "dev") == "dev" {
+		return "0"
+	}
+	return v
+}
+
+func atoiDef(v string, def int) int {
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		return n
 	}
 	return def
 }
@@ -57,6 +77,9 @@ func Load() Config {
 
 		WebhookSecret: getenv("WEBHOOK_SECRET", ""),
 
+		RateLimitPerMin:     atoiDef(getenv("RATE_LIMIT_PER_MIN", devOff("600")), 600),
+		AuthRateLimitPerMin: atoiDef(getenv("AUTH_RATE_LIMIT_PER_MIN", devOff("20")), 20),
+		TrustProxy:          getenv("TRUST_PROXY", "false") == "true",
 		StripeSecretKey:     getenv("STRIPE_SECRET_KEY", ""),
 		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
 		StripeAPIBase:       getenv("STRIPE_API_BASE", ""),

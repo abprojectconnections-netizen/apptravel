@@ -92,3 +92,18 @@ func TestStripeKeysAreTestModeOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRateLimitDefaults(t *testing.T) {
+	t.Setenv("APP_ENV", "dev")
+	if c := Load(); c.RateLimitPerMin != 0 || c.AuthRateLimitPerMin != 0 {
+		t.Fatal("dev must default to no rate limiting", c.RateLimitPerMin, c.AuthRateLimitPerMin)
+	}
+	t.Setenv("APP_ENV", "beta")
+	if c := Load(); c.RateLimitPerMin != 600 || c.AuthRateLimitPerMin != 20 {
+		t.Fatal("non-dev defaults", c.RateLimitPerMin, c.AuthRateLimitPerMin)
+	}
+	t.Setenv("AUTH_RATE_LIMIT_PER_MIN", "5")
+	if Load().AuthRateLimitPerMin != 5 {
+		t.Fatal("override")
+	}
+}

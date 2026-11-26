@@ -74,7 +74,7 @@ func main() {
 	}
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpx.Chain(api.New(cfg, log, checks, opts...).Handler(), log, cfg.AppEnv == "dev"),
+		Handler:           httpx.RateLimit(httpx.SecurityHeaders(httpx.Chain(api.New(cfg, log, checks, opts...).Handler(), log, cfg.AppEnv == "dev")), httpx.Limits{PerMinute: cfg.RateLimitPerMin, AuthPerMinute: cfg.AuthRateLimitPerMin, TrustProxy: cfg.TrustProxy}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
